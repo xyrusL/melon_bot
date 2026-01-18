@@ -1,0 +1,23 @@
+{
+  "name": "melon_bot",
+  "version": "1.0.0",
+  "description": "Minecraft AFK bot using Mineflayer",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "minecraft",
+    "bot",
+    "mineflayer",
+    "afk"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "mineflayer": "^4.33.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "openai": "^6.16.0"
+  }
+}
