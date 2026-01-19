@@ -104,7 +104,11 @@ async function setupAI(bot, botEvents) {
         console.log(`[AI] Thinking for ${username}: "${context.substring(0, 50)}..."`);
 
         try {
-            const completion = await openai.chat.completions.create({
+            // IMPORTANT: Wrap API call in timeout to prevent disconnect
+            // If API takes too long, the server thinks bot is AFK
+            const TIMEOUT_MS = 5000; // 5 seconds max
+
+            const apiPromise = openai.chat.completions.create({
                 model: "qwen/qwen3-next-80b-a3b-instruct",
                 messages: [
                     { role: "system", content: MOCHI_PERSONA },
@@ -112,8 +116,15 @@ async function setupAI(bot, botEvents) {
                 ],
                 temperature: 0.7,
                 top_p: 0.9,
-                max_tokens: 150
+                max_tokens: 80  // Reduced for faster response
             });
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Timeout')), TIMEOUT_MS)
+            );
+
+            // Race: whichever finishes first
+            const completion = await Promise.race([apiPromise, timeoutPromise]);
 
             let reply = completion.choices[0]?.message?.content;
 
@@ -129,12 +140,19 @@ async function setupAI(bot, botEvents) {
                     reply = reply.substring(0, 197) + '...';
                 }
 
-                console.log(`[AI] Mochi says: ${reply}`);
-                bot.chat(reply);
-                botEvents.emit('ai:responded', { reply, username });
+                // Use setImmediate to yield to event loop before chatting
+                setImmediate(() => {
+                    console.log(`[AI] Mochi says: ${reply}`);
+                    bot.chat(reply);
+                    botEvents.emit('ai:responded', { reply, username });
+                });
             }
         } catch (err) {
-            console.error(`[AI] Error generating response: ${err.message}`);
+            if (err.message === 'Timeout') {
+                console.log('[AI] ⏱️ Response took too long, skipping to prevent disconnect.');
+            } else {
+                console.error(`[AI] Error: ${err.message}`);
+            }
             // Don't crash, just log the error
         }
     }
