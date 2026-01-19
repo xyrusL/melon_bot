@@ -273,15 +273,7 @@ function setupCombat(bot, botEvents) {
 
     function runAway() {
         console.log(`[Combat] 🏥 Low health (${bot.health.toFixed(0)} HP)! Running away...`);
-
-        const now = Date.now();
-        if (now - lastLowHealthComplaint > 10000) {
-            lastLowHealthComplaint = now;
-            botEvents.emit('ai:request', {
-                context: `You are at ${bot.health.toFixed(0)} HP! Scream for help or say you are running away!`,
-                username: 'System'
-            });
-        }
+        // AI spam removed - bot will just run away silently
 
         const escapePos = findEscapePosition();
         if (escapePos) {

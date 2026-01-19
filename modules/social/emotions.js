@@ -62,17 +62,15 @@ function setupEmotions(bot, botEvents) {
 
     /**
      * Expresses sadness when health is low
+     * DISABLED: Was causing spam. Now just logs to terminal.
      */
     function sadMessage() {
         const now = Date.now();
-        if (now - lastSadTime < 10000) return; // Max once per 10 seconds
+        if (now - lastSadTime < 30000) return; // Max once per 30 seconds
         lastSadTime = now;
 
-        // Request AI to generate sad message
-        botEvents.emit('ai:request', {
-            context: `You have very low health and might die! Express worry or ask for help in a clingy way.`,
-            username: 'System'
-        });
+        // Just log, don't spam chat
+        console.log('[Emotions] 😢 Bot is sad (low health)');
     }
 
     // ═══════════════════════════════════════════════════════════════
