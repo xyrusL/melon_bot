@@ -245,6 +245,9 @@ function setupCombat(bot, botEvents) {
         const cooldown = 500;
 
         if (now - lastAttackTime >= cooldown) {
+            const targetName = entity.username || entity.name || 'entity';
+            const targetHealth = entity.health ? ` (HP: ${entity.health.toFixed(0)})` : '';
+            console.log(`[Combat] ⚔️ Attacking ${targetName}${targetHealth}`);
             equipBestWeapon();
             bot.attack(entity);
             lastAttackTime = now;
@@ -253,6 +256,10 @@ function setupCombat(bot, botEvents) {
 
     function chase(entity) {
         if (!entity || !entity.position) return;
+
+        const targetName = entity.username || entity.name || 'entity';
+        const dist = bot.entity.position.distanceTo(entity.position);
+        console.log(`[Combat] 🏃 Chasing ${targetName} (${dist.toFixed(1)} blocks away)`);
 
         try {
             const goal = new goals.GoalFollow(entity, OPTIMAL_DISTANCE);
@@ -265,7 +272,7 @@ function setupCombat(bot, botEvents) {
     }
 
     function runAway() {
-        console.log(`[Combat] Low health! Running away...`);
+        console.log(`[Combat] 🏥 Low health (${bot.health.toFixed(0)} HP)! Running away...`);
 
         const now = Date.now();
         if (now - lastLowHealthComplaint > 10000) {
@@ -310,8 +317,9 @@ function setupCombat(bot, botEvents) {
     function scanForThreats() {
         const threat = findNearestGuardThreat();
         if (threat && bot.entity.position.distanceTo(threat.position) <= DETECT_RANGE) {
+            const threatName = threat.username || threat.name || 'entity';
+            console.log(`[Combat] 🎯 Threat detected: ${threatName}! Engaging...`);
             setTarget(threat);
-            console.log(`[Combat] Protecting player from ${threat.name}!`);
         }
     }
 

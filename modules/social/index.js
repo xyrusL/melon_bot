@@ -104,12 +104,21 @@ function setupSocial(bot, botEvents) {
             e.position.distanceTo(bot.entity.position) <= SEARCH_RANGE
         );
 
+        // Log scan result
+        if (players.length > 0) {
+            const names = players.map(p => p.username).join(', ');
+            console.log(`[Social] 👀 Players nearby: ${names}`);
+        } else {
+            console.log(`[Social] 👀 Scanning... No players detected.`);
+        }
+
         // Priority: 1. Explicit target, 2. Previous friend, 3. Closest player
         let target = null;
 
         // 1. Check explicit target first
         if (explicitTarget) {
             target = players.find(p => p.username === explicitTarget);
+            if (target) console.log(`[Social] 🎯 Following explicit target: ${explicitTarget}`);
         }
 
         // 2. Fallback to previous friend
@@ -135,10 +144,9 @@ function setupSocial(bot, botEvents) {
     function handleFollow(target) {
         // If waking up from home
         if (state === 'AT_HOME' || state === 'GOING_HOME') {
-            console.log('[Social] Friends found! Waking up...');
+            console.log(`[Social] 🎉 Friends found! Waking up to join ${target.username}`);
             state = 'FOLLOWING';
             botEvents.emit('social:wakeup', { friend: target.username });
-            // NOTE: We do NOT chat here anymore (removed auto-chat)
         }
 
         state = 'FOLLOWING';
@@ -148,16 +156,19 @@ function setupSocial(bot, botEvents) {
         // Only move if far enough (prevents jitter)
         const dist = bot.entity.position.distanceTo(target.position);
         if (dist > FOLLOW_DIST + 1) {
+            console.log(`[Social] 🚶 Following ${target.username} (distance: ${dist.toFixed(1)} blocks)`);
             try {
                 const goal = new goals.GoalFollow(target, FOLLOW_DIST);
                 bot.pathfinder.setGoal(goal, true);
             } catch (e) { }
+        } else {
+            console.log(`[Social] ✅ Standing near ${target.username}`);
         }
     }
 
     function handleLonely() {
         if (state === 'FOLLOWING' || state === 'IDLE') {
-            console.log('[Social] Everyone left... I\'m alone. 😢');
+            console.log('[Social] 😢 No players nearby... Going back to spawn.');
             state = 'GOING_HOME';
             botEvents.emit('social:lonely');
             goHome();

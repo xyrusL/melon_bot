@@ -25,7 +25,8 @@ const BOT_FUNCTIONS = {
     follow: {
         description: "Follow a player (sama, sunod, follow me)",
         execute: (bot, botEvents, { target }) => {
-            console.log(`[Functions] Following ${target}`);
+            console.log(`[Functions] 🎯 AI triggered: follow(${target})`);
+            console.log(`[Functions] 📍 Teleporting to ${target}...`);
 
             // Teleport to player first
             bot.chat(`/tpo ${target}`);
@@ -48,7 +49,8 @@ const BOT_FUNCTIONS = {
     stopFollow: {
         description: "Stop following and stay (tigil, stay, wag sumunod)",
         execute: (bot, botEvents, { target }) => {
-            console.log(`[Functions] Stopping follow`);
+            console.log(`[Functions] 🛑 AI triggered: stopFollow()`);
+            console.log(`[Functions] Standing still...`);
 
             try {
                 bot.pathfinder.stop();
@@ -62,7 +64,8 @@ const BOT_FUNCTIONS = {
     goHome: {
         description: "Go back to spawn and AFK (uwi, balik spawn, go home)",
         execute: (bot, botEvents, { target }) => {
-            console.log(`[Functions] Going home to spawn`);
+            console.log(`[Functions] 🏠 AI triggered: goHome()`);
+            console.log(`[Functions] Teleporting to spawn...`);
 
             bot.chat('/spawn');
 
@@ -77,7 +80,7 @@ const BOT_FUNCTIONS = {
     teleportTo: {
         description: "Teleport to a player (punta ka sakin, halika dito)",
         execute: (bot, botEvents, { target }) => {
-            console.log(`[Functions] Teleporting to ${target}`);
+            console.log(`[Functions] 📍 AI triggered: teleportTo(${target})`);
             bot.chat(`/tpo ${target}`);
         }
     },
