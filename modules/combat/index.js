@@ -110,15 +110,15 @@ function setupCombat(bot, botEvents) {
         return true;
     }
 
-    // Main combat loop (throttled to 10 TPS to reduce ping)
+    // Main combat loop (throttled to 5 TPS to reduce ping)
     bot.on('physicsTick', () => {
-        // Skip if eating (check shared state from inventory module)
+        // Skip if eating
         const isEating = bot.isEating ? bot.isEating() : false;
         if (!isReady || !bot.entity || isEating) return;
 
-        // Throttle: Only run every 100ms (10 times per second)
+        // Throttle: Only run every 200ms (5 times per second)
         const now = Date.now();
-        if (now - lastCombatTick < 100) return;
+        if (now - lastCombatTick < 200) return;
         lastCombatTick = now;
 
         const health = bot.health || 20;
@@ -128,8 +128,7 @@ function setupCombat(bot, botEvents) {
             return;
         }
 
-        // Eating is now handled by inventory module, not combat
-        // Just run away if low health
+        // Eating is now handled by inventory module
 
         const creeper = findFusingCreeper();
         if (creeper) {

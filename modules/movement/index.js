@@ -86,19 +86,24 @@ function setupMovement(bot, botEvents) {
     //                    SPRINT-JUMP WHILE FOLLOWING
     // ═══════════════════════════════════════════════════════════════
 
-    // This makes the bot jump while sprinting (like players do for speed)
+    // Sprint-jump (throttled to reduce ping)
     let lastJumpTime = 0;
+    let lastMoveTick = 0;
 
     bot.on('physicsTick', () => {
+        // Throttle to every 500ms (2 TPS) - reduces ping significantly
+        const now = Date.now();
+        if (now - lastMoveTick < 500) return;
+        lastMoveTick = now;
+
         // Only sprint-jump when moving forward AND sprinting
         if (!bot.controlState.forward || !bot.controlState.sprint) return;
         if (bot.isEating && bot.isEating()) return;
 
-        const now = Date.now();
-        if (now - lastJumpTime < 400) return; // Jump every 400ms
+        if (now - lastJumpTime < 600) return; // Jump every 600ms
 
         // Check if on ground and moving
-        if (bot.entity.onGround) {
+        if (bot.entity && bot.entity.onGround) {
             bot.setControlState('jump', true);
             setTimeout(() => bot.setControlState('jump', false), 100);
             lastJumpTime = now;

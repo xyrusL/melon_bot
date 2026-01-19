@@ -21,12 +21,12 @@ function setupDefense(bot, botEvents) {
 
     setInterval(() => checkForShield(), 5000);
 
-    // Throttled to 5 TPS (every 200ms) to reduce CPU/ping
+    // Throttled to 2 TPS (every 500ms) to reduce CPU/ping
     bot.on('physicsTick', () => {
         if (!bot.entity || !bot.entities) return;
 
         const now = Date.now();
-        if (now - lastDefenseTick < 200) return;
+        if (now - lastDefenseTick < 500) return;
         lastDefenseTick = now;
 
         scan360Threats();
