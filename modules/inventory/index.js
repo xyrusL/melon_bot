@@ -276,23 +276,36 @@ function setupInventory(bot, botEvents) {
 
     let lastThankTime = 0;
     let lastThankPlayer = '';
+    let foodCountBefore = 0;
+
+    // Track food count before collecting
+    setInterval(() => {
+        if (bot.inventory) {
+            foodCountBefore = bot.inventory.items().filter(i => FOOD_ITEMS.includes(i.name)).length;
+        }
+    }, 1000);
 
     bot.on('playerCollect', (collector, collected) => {
         if (collector !== bot.entity) return;
 
-        // Process inventory after short delay
+        // Wait for inventory to update
         setTimeout(() => {
             processInventory();
 
-            // Check if it was food → thank the giver (BUT ONLY ONCE!)
+            // Check if food count increased (someone gave us food)
+            const currentFoodCount = bot.inventory.items().filter(i => FOOD_ITEMS.includes(i.name)).length;
+            const gotNewFood = currentFoodCount > foodCountBefore;
+
+            if (!gotNewFood) return; // Didn't get food, probably XP or something else
+
             const now = Date.now();
             const nearbyPlayer = findNearestPlayer();
 
-            // Only thank if:
-            // 1. There's a nearby player
-            // 2. Haven't thanked in 30 seconds
-            // 3. Or it's a different player
-            if (nearbyPlayer) {
+            // Only thank if player is VERY close (within 5 blocks = they threw it)
+            if (nearbyPlayer && nearbyPlayer.position) {
+                const dist = bot.entity.position.distanceTo(nearbyPlayer.position);
+                if (dist > 5) return; // Too far, probably not from this player
+
                 const shouldThank = (now - lastThankTime > 30000) ||
                     (nearbyPlayer.username !== lastThankPlayer);
 
@@ -300,7 +313,7 @@ function setupInventory(bot, botEvents) {
                     lastThankTime = now;
                     lastThankPlayer = nearbyPlayer.username;
 
-                    console.log(`[Survival] 🎁 Received item from ${nearbyPlayer.username}!`);
+                    console.log(`[Survival] 🎁 ${nearbyPlayer.username} gave food!`);
                     atSpawn = false;
                     hasAskedForFood = false;
 
