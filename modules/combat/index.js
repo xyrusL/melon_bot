@@ -243,9 +243,6 @@ function setupCombat(bot, botEvents) {
         const cooldown = 500;
 
         if (now - lastAttackTime >= cooldown) {
-            const targetName = entity.username || entity.name || 'entity';
-            const targetHealth = entity.health ? ` (HP: ${entity.health.toFixed(0)})` : '';
-            console.log(`[Combat] ⚔️ Attacking ${targetName}${targetHealth}`);
             equipBestWeapon();
             bot.attack(entity);
             lastAttackTime = now;
@@ -254,10 +251,6 @@ function setupCombat(bot, botEvents) {
 
     function chase(entity) {
         if (!entity || !entity.position) return;
-
-        const targetName = entity.username || entity.name || 'entity';
-        const dist = bot.entity.position.distanceTo(entity.position);
-        console.log(`[Combat] 🏃 Chasing ${targetName} (${dist.toFixed(1)} blocks away)`);
 
         try {
             const goal = new goals.GoalFollow(entity, OPTIMAL_DISTANCE);
@@ -270,7 +263,6 @@ function setupCombat(bot, botEvents) {
     }
 
     function runAway() {
-        console.log(`[Combat] 🏥 Low health (${bot.health.toFixed(0)} HP)! Running away...`);
         // AI spam removed - bot will just run away silently
 
         const escapePos = findEscapePosition();

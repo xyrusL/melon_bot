@@ -231,9 +231,6 @@ async function setupAI(bot, botEvents) {
             const rawMessage = jsonMsg.toString();
             if (!rawMessage || rawMessage.trim() === '') return;
 
-            // DEBUG: Log ALL raw messages
-            console.log(`[AI] 📨 RAW: "${rawMessage.substring(0, 80)}"`);
-
             let username = null;
             let message = rawMessage;
 

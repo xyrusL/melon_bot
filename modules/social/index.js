@@ -104,21 +104,12 @@ function setupSocial(bot, botEvents) {
             e.position.distanceTo(bot.entity.position) <= SEARCH_RANGE
         );
 
-        // Log scan result
-        if (players.length > 0) {
-            const names = players.map(p => p.username).join(', ');
-            console.log(`[Social] 👀 Players nearby: ${names}`);
-        } else {
-            console.log(`[Social] 👀 Scanning... No players detected.`);
-        }
-
         // Priority: 1. Explicit target, 2. Previous friend, 3. Closest player
         let target = null;
 
         // 1. Check explicit target first
         if (explicitTarget) {
             target = players.find(p => p.username === explicitTarget);
-            if (target) console.log(`[Social] 🎯 Following explicit target: ${explicitTarget}`);
         }
 
         // 2. Fallback to previous friend
@@ -156,7 +147,6 @@ function setupSocial(bot, botEvents) {
         // Only move if far enough (prevents jitter)
         const dist = bot.entity.position.distanceTo(target.position);
         if (dist > FOLLOW_DIST + 1) {
-            console.log(`[Social] 🚶 Following ${target.username} (distance: ${dist.toFixed(1)} blocks)`);
             try {
                 const goal = new goals.GoalFollow(target, FOLLOW_DIST);
                 bot.pathfinder.setGoal(goal, true);

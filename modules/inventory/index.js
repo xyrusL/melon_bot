@@ -66,8 +66,6 @@ function setupInventory(bot, botEvents) {
         const health = bot.health || 20;
         const food = bot.food || 20;
 
-        console.log(`[Survival] ❤️ Health: ${health.toFixed(0)} | 🍖 Food: ${food}`);
-
         // Check if we have food in inventory
         const hasFood = checkHasFood();
 
