@@ -271,8 +271,11 @@ function setupInventory(bot, botEvents) {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //                    ITEM RECEIVED → THANK
+    //                    ITEM RECEIVED → THANK (ONCE ONLY)
     // ═══════════════════════════════════════════════════════════════
+
+    let lastThankTime = 0;
+    let lastThankPlayer = '';
 
     bot.on('playerCollect', (collector, collected) => {
         if (collector !== bot.entity) return;
@@ -281,15 +284,24 @@ function setupInventory(bot, botEvents) {
         setTimeout(() => {
             processInventory();
 
-            // Check if it was food → thank the giver
+            // Check if it was food → thank the giver (BUT ONLY ONCE!)
+            const now = Date.now();
             const nearbyPlayer = findNearestPlayer();
-            if (nearbyPlayer) {
-                console.log(`[Survival] 🎁 Received item from ${nearbyPlayer.username}!`);
 
-                // Check if we got food
-                const foods = bot.inventory.items().filter(i => FOOD_ITEMS.includes(i.name));
-                if (foods.length > 0) {
-                    atSpawn = false; // We're no longer stranded
+            // Only thank if:
+            // 1. There's a nearby player
+            // 2. Haven't thanked in 30 seconds
+            // 3. Or it's a different player
+            if (nearbyPlayer) {
+                const shouldThank = (now - lastThankTime > 30000) ||
+                    (nearbyPlayer.username !== lastThankPlayer);
+
+                if (shouldThank) {
+                    lastThankTime = now;
+                    lastThankPlayer = nearbyPlayer.username;
+
+                    console.log(`[Survival] 🎁 Received item from ${nearbyPlayer.username}!`);
+                    atSpawn = false;
                     hasAskedForFood = false;
 
                     botEvents.emit('ai:request', {

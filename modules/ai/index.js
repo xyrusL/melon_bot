@@ -252,8 +252,11 @@ async function setupAI(bot, botEvents) {
             const textLower = message.toLowerCase();
             const isForMochi = textLower.includes('mochi') || textLower.includes('bot');
 
+            console.log(`[AI] 📩 Chat from ${username}: "${message}" (forMochi: ${isForMochi})`);
+
             // Only respond if explicitly addressed
             if (isForMochi) {
+                console.log(`[AI] ✅ Responding to ${username}...`);
                 respond(message, username);
             }
         } catch (err) {
