@@ -65,19 +65,57 @@ function setupCombat(bot, botEvents) {
         }
     });
 
-    // When bot gets hurt
+    // When bot gets hurt - find ACTUAL attacker
     bot.on('entityHurt', (entity) => {
         if (!isReady || entity !== bot.entity) return;
 
-        const attacker = findNearestPlayer();
-        if (attacker && attacker.username) {
-            markHostile(attacker.username);
-            if (!target || target !== attacker) {
-                setTarget(attacker);
-                console.log(`[Combat] Under attack by ${attacker.username}!`);
+        // Find what actually hurt us (closest entity that could attack)
+        const attacker = findActualAttacker();
+
+        if (!attacker) return;
+
+        // If it's a hostile mob, target it
+        if (HOSTILE_MOBS.includes(attacker.name)) {
+            setTarget(attacker);
+            return;
+        }
+
+        // If a PLAYER hit us (and they're not a friend we're following)
+        if (attacker.type === 'player' && attacker.username) {
+            // Don't mark social following target as hostile
+            const socialTarget = bot.socialTarget;
+            if (socialTarget && attacker.username === socialTarget) {
+                return; // Don't attack friends
             }
+
+            markHostile(attacker.username);
+            setTarget(attacker);
         }
     });
+
+    // Find who actually attacked us (within 4 blocks)
+    function findActualAttacker() {
+        if (!bot.entities) return null;
+
+        let closest = null;
+        let closestDist = 4; // Max attack range
+
+        for (const entity of Object.values(bot.entities)) {
+            if (entity === bot.entity) continue;
+            if (!entity.position) continue;
+
+            const dist = bot.entity.position.distanceTo(entity.position);
+            if (dist >= closestDist) continue;
+
+            // Prioritize hostile mobs and players
+            if (HOSTILE_MOBS.includes(entity.name) || entity.type === 'player') {
+                closest = entity;
+                closestDist = dist;
+            }
+        }
+
+        return closest;
+    }
 
     function markHostile(username) {
         hostilePlayers.set(username, Date.now());
