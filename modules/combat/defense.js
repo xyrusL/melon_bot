@@ -13,6 +13,7 @@ function setupDefense(bot, botEvents) {
     let hasShield = false;
     let shieldItem = null;
     let threatsAround = { front: [], behind: [], left: [], right: [] };
+    let lastDefenseTick = 0;  // Throttle defense scan
 
     bot.once('spawn', () => {
         console.log('[Defense] Ready!');
@@ -20,8 +21,14 @@ function setupDefense(bot, botEvents) {
 
     setInterval(() => checkForShield(), 5000);
 
+    // Throttled to 5 TPS (every 200ms) to reduce CPU/ping
     bot.on('physicsTick', () => {
         if (!bot.entity || !bot.entities) return;
+
+        const now = Date.now();
+        if (now - lastDefenseTick < 200) return;
+        lastDefenseTick = now;
+
         scan360Threats();
         handleDefensiveBehaviors();
     });

@@ -46,6 +46,7 @@ function setupCombat(bot, botEvents) {
     let lastAttackTime = 0;
     let isEating = false;
     let lastLowHealthComplaint = 0;
+    let lastCombatTick = 0;  // Throttle combat loop
 
     // Track who attacked us
     const hostilePlayers = new Map();
@@ -111,9 +112,14 @@ function setupCombat(bot, botEvents) {
         return true;
     }
 
-    // Main combat loop
+    // Main combat loop (throttled to 10 TPS to reduce ping)
     bot.on('physicsTick', () => {
         if (!isReady || !bot.entity || isEating) return;
+
+        // Throttle: Only run every 100ms (10 times per second)
+        const now = Date.now();
+        if (now - lastCombatTick < 100) return;
+        lastCombatTick = now;
 
         const health = bot.health || 20;
 
