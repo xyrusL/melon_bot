@@ -119,7 +119,7 @@ async function setupAI(bot, botEvents) {
             const TIMEOUT_MS = 5000;
 
             const apiPromise = openai.chat.completions.create({
-                model: "qwen/qwen3-next-80b-a3b-instruct",
+                model: "moonshotai/kimi-k2-instruct",
                 messages: [
                     { role: "system", content: getSystemPrompt() },
                     { role: "user", content: `Player "${username}" says: ${context}` }
@@ -248,19 +248,12 @@ async function setupAI(bot, botEvents) {
             if (username === bot.username) return;
             if (!username) return; // Skip system messages
 
-            // Check if message is for Mochi
+            // ONLY respond if explicitly mentioned (no more spam from nearby chat)
             const textLower = message.toLowerCase();
             const isForMochi = textLower.includes('mochi') || textLower.includes('bot');
 
-            // Check if player is nearby
-            let isNearby = false;
-            if (username && bot.players[username]?.entity) {
-                const dist = bot.entity.position.distanceTo(bot.players[username].entity.position);
-                if (dist < 5) isNearby = true;
-            }
-
-            // Respond if addressed or nearby
-            if (isForMochi || isNearby) {
+            // Only respond if explicitly addressed
+            if (isForMochi) {
                 respond(message, username);
             }
         } catch (err) {

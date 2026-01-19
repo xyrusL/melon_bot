@@ -155,10 +155,18 @@ function setupInventory(bot, botEvents) {
         if (!bot.inventory) return;
 
         const allItems = bot.inventory.items();
+        console.log(`[Inventory] 📦 Checking inventory... Found ${allItems.length} items`);
+
+        // Debug: Show all items in inventory
+        if (allItems.length > 0) {
+            const itemNames = allItems.map(i => i.name).join(', ');
+            console.log(`[Inventory] 📦 Items: ${itemNames}`);
+        }
+
         const foods = allItems.filter(item => FOOD_ITEMS.includes(item.name));
 
         if (foods.length === 0) {
-            console.log('[Inventory] ❌ No food!');
+            console.log('[Inventory] ❌ No food found in inventory!');
             return;
         }
 
