@@ -3,18 +3,12 @@
  *                    🧠 AI MODULE (Mochi's Brain)
  * ═══════════════════════════════════════════════════════════════
  * 
- * This is the AI system that generates Mochi's responses.
- * It uses NVIDIA's Qwen3 model via OpenAI-compatible API.
+ * AI with FUNCTION CALLING - the AI can trigger bot actions!
  * 
  * HOW IT WORKS:
- * 1. Other modules emit 'ai:request' event with context
- * 2. This module generates a response using the AI
- * 3. It emits 'ai:response' with the generated text
- * 4. The bot then chats the response
- * 
- * ERROR HANDLING:
- * - If API fails, it logs the error and does NOT crash
- * - Other modules can still work without AI
+ * 1. Player says "sama ka sakin mochi"
+ * 2. AI returns: {"action": "follow", "target": "PlayerName", "reply": "sige beh!"}
+ * 3. Bot executes follow() AND chats the reply
  * 
  * ═══════════════════════════════════════════════════════════════
  */
@@ -22,6 +16,7 @@
 require('dotenv').config();
 const OpenAI = require('openai');
 const { MOCHI_PERSONA } = require('./persona');
+const { getFunctionList, executeFunction } = require('./functions');
 
 // Cooldown to prevent spam (3 seconds between replies)
 const MIN_REPLY_COOLDOWN = 3000;
@@ -31,34 +26,59 @@ let lastReplyTime = 0;
 let aiReady = false;
 let openai = null;
 
+// Store bot reference for safety checks
+let botRef = null;
+
+/**
+ * Prompt that tells AI how to return function calls
+ */
+function getSystemPrompt() {
+    return `${MOCHI_PERSONA}
+
+═══════════════════════════════════════════════════════════════
+FUNCTION CALLING - You can trigger bot actions!
+═══════════════════════════════════════════════════════════════
+
+AVAILABLE ACTIONS:
+${getFunctionList()}
+
+HOW TO USE:
+If the player wants you to DO something (not just chat), respond with JSON:
+{"action": "actionName", "target": "playerUsername", "reply": "your taglish reply"}
+
+EXAMPLES:
+- Player says "sama ka mochi" → {"action": "follow", "target": "PlayerName", "reply": "sige beh sunod ako!"}
+- Player says "tigil ka" → {"action": "stopFollow", "target": "", "reply": "okie stay lang ako dito beh"}
+- Player says "uwi ka na" → {"action": "goHome", "target": "", "reply": "sige uwi na ako, miss mo ko agad? hehe"}
+- Player says "protect mo ko" → {"action": "protect", "target": "PlayerName", "reply": "tara g beh, protect kita!"}
+
+If just normal conversation (no action needed), just reply normally WITHOUT JSON.
+
+IMPORTANT:
+- ONLY use JSON when player wants you to DO something
+- Use the EXACT action names from the list above
+- Always include a "reply" field with your response
+- If you don't understand, just chat normally (no JSON)
+`;
+}
+
 /**
  * Sets up the AI module
- * @param {Object} bot - The mineflayer bot instance
- * @param {EventEmitter} botEvents - The central event bus
  */
 async function setupAI(bot, botEvents) {
+    botRef = bot;
     const apiKey = process.env.NVIDIA_API_KEY;
-
-    // ═══════════════════════════════════════════════════════════════
-    //                    CHECK API KEY
-    // ═══════════════════════════════════════════════════════════════
 
     if (!apiKey || apiKey === 'your_key_here') {
         console.log('[AI] ⚠️ No NVIDIA_API_KEY in .env. AI disabled.');
-        console.log('[AI] Bot will still work, but won\'t chat intelligently.');
         botEvents.emit('ai:disabled');
         return;
     }
 
-    // Create OpenAI client for NVIDIA API
     openai = new OpenAI({
         apiKey: apiKey,
         baseURL: 'https://integrate.api.nvidia.com/v1',
     });
-
-    // ═══════════════════════════════════════════════════════════════
-    //                    TEST API CONNECTION
-    // ═══════════════════════════════════════════════════════════════
 
     console.log('[AI] Testing API connection...');
     try {
@@ -67,93 +87,128 @@ async function setupAI(bot, botEvents) {
             messages: [{ role: "user", content: "hi" }],
             max_tokens: 10
         });
-        console.log('[AI] ✅ API connected! Mochi is ready to chat.');
+        console.log('[AI] ✅ API connected! Function calling enabled.');
         aiReady = true;
         botEvents.emit('ai:ready');
     } catch (err) {
         console.error('[AI] ❌ API connection failed:', err.message);
-        console.log('[AI] Bot will work, but AI chat is disabled.');
         botEvents.emit('ai:error', err);
         return;
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //                    AI RESPONSE FUNCTION
+    //                    SMART RESPOND FUNCTION
     // ═══════════════════════════════════════════════════════════════
 
-    /**
-     * Generates an AI response and chats it
-     * @param {string} context - What happened / what to respond to
-     * @param {string} username - Who triggered this (for logging)
-     */
     async function respond(context, username = 'System') {
-        // Check cooldown
         const now = Date.now();
         if (now - lastReplyTime < MIN_REPLY_COOLDOWN) {
-            console.log(`[AI] Cooldown, skipping: "${context.substring(0, 50)}..."`);
+            console.log(`[AI] Cooldown, skipping`);
             return;
         }
         lastReplyTime = now;
 
-        // Check if AI is ready
         if (!aiReady || !openai) {
-            console.log('[AI] Not ready, skipping response.');
+            console.log('[AI] Not ready, skipping.');
             return;
         }
 
         console.log(`[AI] Thinking for ${username}: "${context.substring(0, 50)}..."`);
 
         try {
-            // IMPORTANT: Wrap API call in timeout to prevent disconnect
-            // If API takes too long, the server thinks bot is AFK
-            const TIMEOUT_MS = 5000; // 5 seconds max
+            const TIMEOUT_MS = 5000;
 
             const apiPromise = openai.chat.completions.create({
                 model: "qwen/qwen3-next-80b-a3b-instruct",
                 messages: [
-                    { role: "system", content: MOCHI_PERSONA },
-                    { role: "user", content: `${username}: ${context}` }
+                    { role: "system", content: getSystemPrompt() },
+                    { role: "user", content: `Player "${username}" says: ${context}` }
                 ],
                 temperature: 0.7,
                 top_p: 0.9,
-                max_tokens: 80  // Reduced for faster response
+                max_tokens: 100
             });
 
             const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Timeout')), TIMEOUT_MS)
             );
 
-            // Race: whichever finishes first
             const completion = await Promise.race([apiPromise, timeoutPromise]);
+            let response = completion.choices[0]?.message?.content;
 
-            let reply = completion.choices[0]?.message?.content;
+            if (!response) return;
 
-            if (reply) {
-                // Clean up the reply
-                reply = reply
-                    .replace(/<think>[\s\S]*?<\/think>/g, '') // Remove thinking tags
-                    .replace(/[\r\n]+/g, ' ')                 // Remove newlines
-                    .trim();
+            // Clean up response
+            response = response
+                .replace(/<think>[\s\S]*?<\/think>/g, '')
+                .replace(/[\r\n]+/g, ' ')
+                .trim();
 
-                // Limit length for Minecraft chat
-                if (reply.length > 200) {
-                    reply = reply.substring(0, 197) + '...';
+            console.log(`[AI] Raw response: ${response}`);
+
+            // ═══════════════════════════════════════════════════════════════
+            //                    PARSE FUNCTION CALL
+            // ═══════════════════════════════════════════════════════════════
+
+            let actionExecuted = false;
+            let reply = response;
+
+            // Try to parse JSON (function call)
+            if (response.includes('{') && response.includes('}')) {
+                try {
+                    // Extract JSON from response
+                    const jsonMatch = response.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0]);
+
+                        if (parsed.action && parsed.action !== 'chat') {
+                            console.log(`[AI] 🔧 Function call: ${parsed.action}(${parsed.target || username})`);
+
+                            // Execute the function
+                            const target = parsed.target || username;
+                            executeFunction(bot, botEvents, parsed.action, target);
+                            actionExecuted = true;
+                        }
+
+                        // Use the reply from JSON
+                        if (parsed.reply) {
+                            reply = parsed.reply;
+                        }
+                    }
+                } catch (parseErr) {
+                    // Not valid JSON, treat as normal reply
+                    console.log(`[AI] Not a function call, normal reply`);
                 }
-
-                // Use setImmediate to yield to event loop before chatting
-                setImmediate(() => {
-                    console.log(`[AI] Mochi says: ${reply}`);
-                    bot.chat(reply);
-                    botEvents.emit('ai:responded', { reply, username });
-                });
             }
+
+            // ═══════════════════════════════════════════════════════════════
+            //                    SEND CHAT MESSAGE
+            // ═══════════════════════════════════════════════════════════════
+
+            // Limit length
+            if (reply.length > 200) {
+                reply = reply.substring(0, 197) + '...';
+            }
+
+            // Safety check: make sure bot is still connected
+            if (botRef && botRef.entity && botRef._client) {
+                console.log(`[AI] Mochi says: ${reply}`);
+                try {
+                    botRef.chat(reply);
+                } catch (chatErr) {
+                    console.log(`[AI] Chat error (bot disconnected?): ${chatErr.message}`);
+                }
+                botEvents.emit('ai:responded', { reply, username, actionExecuted });
+            } else {
+                console.log(`[AI] Bot not ready to chat, skipping.`);
+            }
+
         } catch (err) {
             if (err.message === 'Timeout') {
-                console.log('[AI] ⏱️ Response took too long, skipping to prevent disconnect.');
+                console.log('[AI] ⏱️ Timeout, skipping.');
             } else {
                 console.error(`[AI] Error: ${err.message}`);
             }
-            // Don't crash, just log the error
         }
     }
 
@@ -161,12 +216,10 @@ async function setupAI(bot, botEvents) {
     //                    EVENT LISTENERS
     // ═══════════════════════════════════════════════════════════════
 
-    // Listen for AI requests from other modules
     botEvents.on('ai:request', ({ context, username }) => {
         respond(context, username);
     });
 
-    // Also attach to bot for backward compatibility
     bot.chatWithAI = respond;
 
     // ═══════════════════════════════════════════════════════════════
@@ -178,11 +231,10 @@ async function setupAI(bot, botEvents) {
             const rawMessage = jsonMsg.toString();
             if (!rawMessage || rawMessage.trim() === '') return;
 
-            // Parse username and message
             let username = null;
             let message = rawMessage;
 
-            // Try different chat formats
+            // Parse chat formats
             const angleMatch = rawMessage.match(/^<([^>]+)>\s*(.+)$/);
             if (angleMatch) { username = angleMatch[1]; message = angleMatch[2]; }
 
@@ -192,8 +244,9 @@ async function setupAI(bot, botEvents) {
             const colonMatch = rawMessage.match(/^([a-zA-Z0-9_]+):\s*(.+)$/);
             if (!username && colonMatch) { username = colonMatch[1]; message = colonMatch[2]; }
 
-            // Ignore own messages
+            // Ignore own messages and system messages
             if (username === bot.username) return;
+            if (!username) return; // Skip system messages
 
             // Check if message is for Mochi
             const textLower = message.toLowerCase();
@@ -215,7 +268,7 @@ async function setupAI(bot, botEvents) {
         }
     });
 
-    console.log('[AI] Module loaded!');
+    console.log('[AI] Module loaded with function calling!');
 }
 
 module.exports = { setupAI };
