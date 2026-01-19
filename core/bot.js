@@ -21,6 +21,7 @@ const { setupDefense } = require('../modules/combat/defense');
 const { setupGuard } = require('../modules/combat/guard');
 const { setupInventory } = require('../modules/inventory');
 const { setupMovement } = require('../modules/movement');
+const { setupPerformance } = require('../modules/performance');
 
 /**
  * Creates and starts the bot
@@ -50,6 +51,7 @@ function createBot(config) {
     // Order matters! AI must load first so other modules can use it.
 
     setupAI(bot, botEvents);           // AI Chat (must be first)
+    setupPerformance(bot, botEvents);  // Performance monitor
     setupMovement(bot, botEvents);     // Pathfinder config (parkour, avoid lava)
     setupInventory(bot, botEvents);    // Auto-equip, food management
     setupEmotions(bot, botEvents);     // Social reactions (uses AI)

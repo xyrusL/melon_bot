@@ -226,7 +226,7 @@ async function setupAI(bot, botEvents) {
     //                    CHAT MESSAGE LISTENER
     // ═══════════════════════════════════════════════════════════════
 
-    bot.on('message', async (jsonMsg) => {
+    bot.on('message', (jsonMsg) => {
         try {
             const rawMessage = jsonMsg.toString();
             if (!rawMessage || rawMessage.trim() === '') return;
@@ -246,21 +246,21 @@ async function setupAI(bot, botEvents) {
 
             // Ignore own messages and system messages
             if (username === bot.username) return;
-            if (!username) return; // Skip system messages
+            if (!username) return;
 
-            // ONLY respond if explicitly mentioned (no more spam from nearby chat)
+            // Check if message is for Mochi
             const textLower = message.toLowerCase();
             const isForMochi = textLower.includes('mochi') || textLower.includes('bot');
 
-            console.log(`[AI] 📩 Chat from ${username}: "${message}" (forMochi: ${isForMochi})`);
-
-            // Only respond if explicitly addressed
             if (isForMochi) {
-                console.log(`[AI] ✅ Responding to ${username}...`);
-                respond(message, username);
+                console.log(`[AI] 💬 ${username}: "${message}"`);
+                // Call respond without await (fire and forget)
+                respond(message, username).catch(err => {
+                    console.log(`[AI] ❌ Error: ${err.message}`);
+                });
             }
         } catch (err) {
-            // Ignore parse errors
+            console.log(`[AI] ❌ Parse error: ${err.message}`);
         }
     });
 
