@@ -148,8 +148,12 @@ function setupInventory(bot, botEvents) {
             foods.find(f => f.name.includes('cooked')) ||
             foods[0];
 
+        // Record current stats
+        const healthBefore = bot.health;
+        const foodBefore = bot.food;
+
         // Start eating
-        console.log(`[Survival] 🍖 Eating ${bestFood.name}...`);
+        console.log(`[Survival] 🍖 Eating ${bestFood.name}... (HP: ${healthBefore.toFixed(0)}, Hunger: ${foodBefore})`);
         lastEatTime = now;
         isEating = true;
 
@@ -163,18 +167,32 @@ function setupInventory(bot, botEvents) {
             await bot.equip(bestFood, 'hand');
             bot.activateItem();
 
-            // Wait for eating (can be interrupted)
+            // Wait for eating to complete (food takes ~1.6-2s to eat)
+            // We wait 2.5s to be safe
             await new Promise((resolve) => {
-                const eatTimeout = setTimeout(() => {
-                    resolve();
-                }, 2000);
-
-                // Store timeout so we can cancel it
-                bot._eatTimeout = eatTimeout;
+                bot._eatTimeout = setTimeout(resolve, 2500);
             });
 
             bot.deactivateItem();
-            console.log('[Survival] ✅ Finished eating!');
+
+            // Check if it worked
+            const healthAfter = bot.health;
+            const foodAfter = bot.food;
+
+            if (healthAfter > healthBefore || foodAfter > foodBefore) {
+                console.log(`[Survival] ✅ Ate food! HP: ${healthBefore.toFixed(0)} → ${healthAfter.toFixed(0)}, Hunger: ${foodBefore} → ${foodAfter}`);
+            } else {
+                console.log(`[Survival] ⚠️ Eating didn't work? HP: ${healthAfter.toFixed(0)}, Hunger: ${foodAfter}`);
+            }
+
+            // If still hungry or low HP, try eating again
+            if (healthAfter < 15 || foodAfter < 18) {
+                isEating = false;
+                console.log(`[Survival] 🍖 Still hungry, eating more...`);
+                setTimeout(() => tryEatFood(), 500);
+                return;
+            }
+
         } catch (err) {
             console.log(`[Survival] ❌ Eating error: ${err.message}`);
         }
