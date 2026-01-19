@@ -1,10 +1,14 @@
 /**
  * ═══════════════════════════════════════════════════════════════
- *                    🎒 INVENTORY MODULE
+ *                    🎒 INVENTORY & SURVIVAL MODULE
  * ═══════════════════════════════════════════════════════════════
  * 
- * Auto-equip armor, weapons, shields.
- * Emergency: /spawn when low HP, drop items when dying.
+ * Smart survival system:
+ * - Eating blocks other actions (like real player)
+ * - Interrupt eating if danger → escape
+ * - Spawn when almost dead
+ * - Ask for food at spawn (AI)
+ * - Thank food giver (AI)
  * 
  * ═══════════════════════════════════════════════════════════════
  */
@@ -29,63 +33,260 @@ const FOOD_ITEMS = [
     'beef', 'porkchop', 'chicken', 'mutton', 'rabbit', 'carrot', 'potato'
 ];
 
+const HOSTILE_MOBS = [
+    'zombie', 'skeleton', 'spider', 'creeper', 'enderman', 'witch',
+    'phantom', 'drowned', 'husk', 'stray', 'pillager', 'vindicator',
+    'blaze', 'ghast', 'wither_skeleton', 'zombified_piglin'
+];
+
 const EMERGENCY_HEALTH = 6;
-const CRITICAL_HEALTH = 3;
+const CRITICAL_HEALTH = 4;
 
 function setupInventory(bot, botEvents) {
-    let lastEmergencySpawn = 0;
-    let hasDroppedItems = false;
-    let lastEquipTime = {};
-    let lastEatTime = 0;
+    // ═══════════════════════════════════════════════════════════════
+    //                    STATE VARIABLES
+    // ═══════════════════════════════════════════════════════════════
+
     let isEating = false;
+    let lastEatTime = 0;
+    let lastSpawnTime = 0;
+    let lastFoodAskTime = 0;
+    let lastEquipTime = {};
+    let atSpawn = false;
+    let hasAskedForFood = false;
 
-    bot.once('spawn', () => {
-        console.log('[Inventory] Ready!');
-    });
+    // Expose eating state to other modules
+    bot.isEating = () => isEating;
 
-    bot.on('playerCollect', (collector, collected) => {
-        if (collector !== bot.entity) return;
-        setTimeout(() => processInventory(), 500);
-    });
+    // ═══════════════════════════════════════════════════════════════
+    //                    MAIN HEALTH HANDLER
+    // ═══════════════════════════════════════════════════════════════
 
     bot.on('health', () => {
         const health = bot.health || 20;
+        const food = bot.food || 20;
 
-        if (health <= CRITICAL_HEALTH && !hasDroppedItems) {
-            console.log(`[Inventory] 💀 CRITICAL! Dropping ALL items!`);
-            dropAllItems();
-            hasDroppedItems = true;
+        console.log(`[Survival] ❤️ Health: ${health.toFixed(0)} | 🍖 Food: ${food}`);
+
+        // CRITICAL: Almost dead → spawn immediately
+        if (health <= CRITICAL_HEALTH) {
+            emergencySpawn();
             return;
         }
 
-        if (health < EMERGENCY_HEALTH && health > CRITICAL_HEALTH) {
-            if (bot.emotions) bot.emotions.sadMessage();
+        // LOW: Need to eat or escape
+        if (health < EMERGENCY_HEALTH) {
+            const danger = checkNearbyDanger();
 
-            const now = Date.now();
-            if (now - lastEmergencySpawn > 10000) {
-                console.log(`[Inventory] 🚨 EMERGENCY! Teleporting to spawn!`);
-                bot.chat('/spawn');
-                lastEmergencySpawn = now;
+            if (danger) {
+                // Danger nearby + low HP → escape first
+                console.log(`[Survival] ⚠️ Danger nearby! Escaping before eating...`);
+                interruptEating();
+                emergencySpawn();
+            } else {
+                // Safe → try to eat
+                tryEatFood();
             }
+            return;
         }
 
-        if (health < 15) {
+        // HUNGRY: Need to eat (but not critical)
+        if (food < 15 || health < 15) {
             tryEatFood();
-        }
-
-        if (health > EMERGENCY_HEALTH && hasDroppedItems) {
-            hasDroppedItems = false;
-            console.log('[Inventory] Health recovered.');
         }
     });
 
-    setInterval(() => {
-        if (!bot.entities) return;
-        scanForNearbyItems();
-    }, 2000);
+    // ═══════════════════════════════════════════════════════════════
+    //                    EATING SYSTEM
+    // ═══════════════════════════════════════════════════════════════
+
+    async function tryEatFood() {
+        // Check cooldowns and state
+        const now = Date.now();
+        if (now - lastEatTime < 3000) return;
+        if (isEating) return;
+        if (!bot.inventory) return;
+
+        // Find food
+        const allItems = bot.inventory.items();
+        const foods = allItems.filter(item => FOOD_ITEMS.includes(item.name));
+
+        if (foods.length === 0) {
+            console.log('[Survival] ❌ No food in inventory!');
+
+            // At spawn? Ask for food
+            if (atSpawn && !hasAskedForFood && now - lastFoodAskTime > 30000) {
+                lastFoodAskTime = now;
+                hasAskedForFood = true;
+                console.log('[Survival] 🙏 Asking for food...');
+                botEvents.emit('ai:request', {
+                    context: 'You are at spawn with no food and low health. Ask someone for food in a cute clingy way.',
+                    username: 'System'
+                });
+            }
+            return;
+        }
+
+        // Reset food ask flag if we have food now
+        hasAskedForFood = false;
+
+        // Find best food (golden first, then cooked, then raw)
+        const bestFood = foods.find(f => f.name.includes('golden')) ||
+            foods.find(f => f.name.includes('cooked')) ||
+            foods[0];
+
+        // Start eating
+        console.log(`[Survival] 🍖 Eating ${bestFood.name}...`);
+        lastEatTime = now;
+        isEating = true;
+
+        // STOP ALL OTHER ACTIONS (like a real player)
+        try {
+            bot.pathfinder.stop();
+            bot.clearControlStates();
+        } catch (e) { }
+
+        try {
+            await bot.equip(bestFood, 'hand');
+            bot.activateItem();
+
+            // Wait for eating (can be interrupted)
+            await new Promise((resolve) => {
+                const eatTimeout = setTimeout(() => {
+                    resolve();
+                }, 2000);
+
+                // Store timeout so we can cancel it
+                bot._eatTimeout = eatTimeout;
+            });
+
+            bot.deactivateItem();
+            console.log('[Survival] ✅ Finished eating!');
+        } catch (err) {
+            console.log(`[Survival] ❌ Eating error: ${err.message}`);
+        }
+
+        isEating = false;
+    }
+
+    function interruptEating() {
+        if (!isEating) return;
+
+        console.log('[Survival] 🚫 Eating interrupted!');
+
+        try {
+            bot.deactivateItem();
+            if (bot._eatTimeout) {
+                clearTimeout(bot._eatTimeout);
+            }
+        } catch (e) { }
+
+        isEating = false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //                    EMERGENCY SPAWN
+    // ═══════════════════════════════════════════════════════════════
+
+    function emergencySpawn() {
+        const now = Date.now();
+        if (now - lastSpawnTime < 5000) return; // Max once per 5 seconds
+
+        console.log('[Survival] 🚨 EMERGENCY! Teleporting to spawn!');
+        lastSpawnTime = now;
+        atSpawn = true;
+
+        // Interrupt eating if we were eating
+        interruptEating();
+
+        bot.chat('/spawn');
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //                    DANGER DETECTION
+    // ═══════════════════════════════════════════════════════════════
+
+    function checkNearbyDanger() {
+        if (!bot.entities) return false;
+
+        for (const entity of Object.values(bot.entities)) {
+            if (!entity.position) continue;
+
+            const dist = bot.entity.position.distanceTo(entity.position);
+            if (dist > 8) continue;
+
+            // Hostile mob nearby
+            if (HOSTILE_MOBS.includes(entity.name)) {
+                return entity;
+            }
+
+            // Player who attacked us (check if hostile)
+            if (entity.type === 'player' && entity !== bot.entity) {
+                // Could add hostile player tracking here
+            }
+        }
+
+        return null;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //                    ITEM RECEIVED → THANK
+    // ═══════════════════════════════════════════════════════════════
+
+    bot.on('playerCollect', (collector, collected) => {
+        if (collector !== bot.entity) return;
+
+        // Process inventory after short delay
+        setTimeout(() => {
+            processInventory();
+
+            // Check if it was food → thank the giver
+            const nearbyPlayer = findNearestPlayer();
+            if (nearbyPlayer) {
+                console.log(`[Survival] 🎁 Received item from ${nearbyPlayer.username}!`);
+
+                // Check if we got food
+                const foods = bot.inventory.items().filter(i => FOOD_ITEMS.includes(i.name));
+                if (foods.length > 0) {
+                    atSpawn = false; // We're no longer stranded
+                    hasAskedForFood = false;
+
+                    botEvents.emit('ai:request', {
+                        context: `${nearbyPlayer.username} just gave you food! Thank them in a cute happy way.`,
+                        username: nearbyPlayer.username
+                    });
+                }
+            }
+        }, 500);
+    });
+
+    function findNearestPlayer() {
+        if (!bot.entities) return null;
+
+        let nearest = null;
+        let nearestDist = Infinity;
+
+        for (const entity of Object.values(bot.entities)) {
+            if (entity.type !== 'player' || entity === bot.entity) continue;
+            if (!entity.username) continue;
+
+            const dist = bot.entity.position.distanceTo(entity.position);
+            if (dist < nearestDist && dist < 10) {
+                nearest = entity;
+                nearestDist = dist;
+            }
+        }
+
+        return nearest;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //                    AUTO EQUIP
+    // ═══════════════════════════════════════════════════════════════
 
     function processInventory() {
         if (!bot.inventory) return;
+        if (isEating) return; // Don't equip while eating
 
         equipBestArmor('helmet', 'head');
         equipBestArmor('chestplate', 'torso');
@@ -93,112 +294,6 @@ function setupInventory(bot, botEvents) {
         equipBestArmor('boots', 'feet');
         equipBestWeapon();
         equipShield();
-    }
-
-    function scanForNearbyItems() {
-        try {
-            const nearbyItems = Object.values(bot.entities).filter(e => {
-                try {
-                    if (e.type !== 'object') return false;
-                    if (!e.position) return false;
-                    const dist = bot.entity.position.distanceTo(e.position);
-                    return dist < 5;
-                } catch (err) {
-                    return false;
-                }
-            });
-
-            if (nearbyItems.length === 0) return;
-
-            for (const itemEntity of nearbyItems) {
-                try {
-                    const dist = bot.entity.position.distanceTo(itemEntity.position);
-                    if (dist < 1.5) continue;
-                    if (dist > 4) continue;
-
-                    console.log(`[Inventory] Found item nearby!`);
-
-                    try {
-                        bot.pathfinder.setGoal(new (require('mineflayer-pathfinder').goals.GoalNear)(
-                            itemEntity.position.x,
-                            itemEntity.position.y,
-                            itemEntity.position.z,
-                            1
-                        ));
-
-                        if (bot.emotions) {
-                            const player = Object.values(bot.entities).find(e =>
-                                e.type === 'player' &&
-                                e !== bot.entity &&
-                                e.position.distanceTo(bot.entity.position) < 5
-                            );
-                            if (player) {
-                                setTimeout(() => bot.emotions.thankUser(player.username, 'item'), 1000);
-                            }
-                        }
-
-                        setTimeout(() => {
-                            try { bot.pathfinder.stop(); } catch (e) { }
-                        }, 1500);
-
-                        break;
-                    } catch (e) { }
-                } catch (e) { }
-            }
-        } catch (e) { }
-    }
-
-    function tryEatFood() {
-        const now = Date.now();
-        if (now - lastEatTime < 3000) return;
-        if (isEating) return;
-        if (!bot.inventory) return;
-
-        const allItems = bot.inventory.items();
-        console.log(`[Inventory] 📦 Checking inventory... Found ${allItems.length} items`);
-
-        // Debug: Show all items in inventory
-        if (allItems.length > 0) {
-            const itemNames = allItems.map(i => i.name).join(', ');
-            console.log(`[Inventory] 📦 Items: ${itemNames}`);
-        }
-
-        const foods = allItems.filter(item => FOOD_ITEMS.includes(item.name));
-
-        if (foods.length === 0) {
-            console.log('[Inventory] ❌ No food found in inventory!');
-            return;
-        }
-
-        const bestFood = foods.find(f => f.name.includes('golden')) ||
-            foods.find(f => f.name.includes('cooked')) ||
-            foods[0];
-
-        console.log(`[Inventory] 🍖 Eating ${bestFood.name}...`);
-        lastEatTime = now;
-        isEating = true;
-
-        try {
-            bot.pathfinder.stop();
-            bot.clearControlStates();
-        } catch (e) { }
-
-        bot.equip(bestFood, 'hand').then(() => {
-            bot.activateItem();
-
-            setTimeout(() => {
-                try {
-                    bot.deactivateItem();
-                    isEating = false;
-                    console.log('[Inventory] ✅ Finished eating!');
-                } catch (e) {
-                    isEating = false;
-                }
-            }, 2000);
-        }).catch((err) => {
-            isEating = false;
-            console.log(`[Inventory] ❌ Error eating: ${err.message}`);
-        });
     }
 
     function equipBestArmor(type, slot) {
@@ -227,16 +322,17 @@ function setupInventory(bot, botEvents) {
         if (equipped) {
             const equippedTier = getArmorTier(equipped.name);
             if (equippedTier >= bestTier) return;
-            console.log(`[Inventory] Upgrading ${equipped.name} → ${best.name}`);
         }
 
         lastEquipTime[slot] = now;
         bot.equip(best, slot).then(() => {
-            console.log(`[Inventory] ✅ Equipped ${best.name}`);
+            console.log(`[Survival] ✅ Equipped ${best.name}`);
         }).catch(() => { });
     }
 
     function equipBestWeapon() {
+        if (isEating) return;
+
         const items = bot.inventory.items();
         const weapons = items.filter(item => WEAPON_TIERS[item.name]);
 
@@ -259,15 +355,16 @@ function setupInventory(bot, botEvents) {
         if (equipped && WEAPON_TIERS[equipped.name]) {
             const equippedTier = WEAPON_TIERS[equipped.name] || 0;
             if (equippedTier >= bestTier) return;
-            console.log(`[Inventory] Upgrading ${equipped.name} → ${best.name}`);
         }
 
         bot.equip(best, 'hand').then(() => {
-            console.log(`[Inventory] ⚔️ Equipped ${best.name}`);
+            console.log(`[Survival] ⚔️ Equipped ${best.name}`);
         }).catch(() => { });
     }
 
     function equipShield() {
+        if (isEating) return;
+
         const items = bot.inventory.items();
         const shield = items.find(item => item.name === 'shield');
 
@@ -277,50 +374,8 @@ function setupInventory(bot, botEvents) {
         if (equipped && equipped.name === 'shield') return;
 
         bot.equip(shield, 'off-hand').then(() => {
-            console.log(`[Inventory] 🛡️ Equipped shield`);
+            console.log(`[Survival] 🛡️ Equipped shield`);
         }).catch(() => { });
-    }
-
-    async function dropAllItems() {
-        bot.chat('💀 Critical health! Dropping ALL items!');
-        console.log('[Inventory] Dropping all items...');
-
-        const items = bot.inventory.items();
-        for (const item of items) {
-            try {
-                if (item && item.type != null && item.count > 0) {
-                    await bot.toss(item.type, null, item.count).catch(() => { });
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                }
-            } catch (e) {
-                console.log(`[Inventory] Error dropping ${item?.name}: ${e.message}`);
-            }
-        }
-
-        console.log('[Inventory] Dropping armor...');
-        const slots = ['head', 'torso', 'legs', 'feet', 'off-hand'];
-
-        for (const slot of slots) {
-            try {
-                const destSlot = bot.getEquipmentDestSlot(slot);
-                const equipped = bot.inventory.slots[destSlot];
-
-                if (equipped && equipped.type != null) {
-                    await bot.unequip(slot).catch(() => { });
-                    await new Promise(resolve => setTimeout(resolve, 200));
-
-                    const unequippedItem = bot.inventory.items().find(i => i.name === equipped.name);
-                    if (unequippedItem && unequippedItem.type != null) {
-                        await bot.toss(unequippedItem.type, null, unequippedItem.count).catch(() => { });
-                    }
-                }
-            } catch (e) {
-                console.log(`[Inventory] Error dropping ${slot}: ${e.message}`);
-            }
-        }
-
-        bot.chat('✅ All items dropped!');
-        console.log('[Inventory] All items dropped!');
     }
 
     function getArmorTier(name) {
@@ -330,7 +385,7 @@ function setupInventory(bot, botEvents) {
         return -1;
     }
 
-    console.log('[Inventory] Module loaded!');
+    console.log('[Survival] Module loaded!');
 }
 
 module.exports = { setupInventory };
