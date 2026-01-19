@@ -226,41 +226,44 @@ async function setupAI(bot, botEvents) {
     //                    CHAT MESSAGE LISTENER
     // ═══════════════════════════════════════════════════════════════
 
+    // Primary chat listener (direct player chat)
+    bot.on('chat', (username, message) => {
+        if (username === bot.username) return;
+
+        console.log(`[AI] 📨 Chat: ${username} -> "${message}"`);
+
+        const textLower = message.toLowerCase();
+        const isForMochi = textLower.includes('mochi') || textLower.includes('bot');
+
+        if (isForMochi) {
+            console.log(`[AI] ✅ Responding to ${username}...`);
+            respond(message, username).catch(err => {
+                console.log(`[AI] ❌ Error: ${err.message}`);
+            });
+        }
+    });
+
+    // Backup: Also listen to raw messages for other formats
     bot.on('message', (jsonMsg) => {
         try {
             const rawMessage = jsonMsg.toString();
             if (!rawMessage || rawMessage.trim() === '') return;
 
-            let username = null;
-            let message = rawMessage;
+            // Skip if it looks like regular chat (already handled above)
+            if (rawMessage.match(/^<[^>]+>\s*.+$/) || rawMessage.match(/^[a-zA-Z0-9_]+:\s*.+$/)) {
+                return; // Already handled by 'chat' event
+            }
 
-            // Parse chat formats
-            const angleMatch = rawMessage.match(/^<([^>]+)>\s*(.+)$/);
-            if (angleMatch) { username = angleMatch[1]; message = angleMatch[2]; }
-
-            const bracketMatch = rawMessage.match(/^\[([^\]]+)\]\s*(.+)$/);
-            if (!username && bracketMatch) { username = bracketMatch[1]; message = bracketMatch[2]; }
-
-            const colonMatch = rawMessage.match(/^([a-zA-Z0-9_]+):\s*(.+)$/);
-            if (!username && colonMatch) { username = colonMatch[1]; message = colonMatch[2]; }
-
-            // Ignore own messages and system messages
-            if (username === bot.username) return;
-            if (!username) return;
-
-            // Check if message is for Mochi
-            const textLower = message.toLowerCase();
-            const isForMochi = textLower.includes('mochi') || textLower.includes('bot');
-
-            if (isForMochi) {
-                console.log(`[AI] 💬 ${username}: "${message}"`);
-                // Call respond without await (fire and forget)
-                respond(message, username).catch(err => {
+            // Check for Mochi mentions in other message formats
+            const textLower = rawMessage.toLowerCase();
+            if (textLower.includes('mochi') || textLower.includes('bot')) {
+                console.log(`[AI] 📩 Message: "${rawMessage.substring(0, 60)}"`);
+                respond(rawMessage, 'Someone').catch(err => {
                     console.log(`[AI] ❌ Error: ${err.message}`);
                 });
             }
         } catch (err) {
-            console.log(`[AI] ❌ Parse error: ${err.message}`);
+            // Ignore parse errors
         }
     });
 
