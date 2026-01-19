@@ -45,10 +45,11 @@ function setupGuard(bot, botEvents) {
         console.log('[Guard] Ready!');
     });
 
+    // Guard scan every 1 second (was 0.5s - reduced for ping)
     setInterval(() => {
         if (!isReady || !bot.entities) return;
         scanAndProtect();
-    }, 500);
+    }, 1000);
 
     function scanAndProtect() {
         const nearbyPlayers = getNearbyPlayers();

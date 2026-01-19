@@ -21,7 +21,7 @@ const { goals } = require('mineflayer-pathfinder');
 // Settings (easy to change)
 const SEARCH_RANGE = 64;    // How far to look for friends
 const FOLLOW_DIST = 3;      // How close to stand to friends
-const CHECK_INTERVAL = 2000; // Check every 2 seconds
+const CHECK_INTERVAL = 3000; // Check every 3 seconds (reduced for ping)
 
 /**
  * Sets up the social module

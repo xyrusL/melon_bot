@@ -278,12 +278,12 @@ function setupInventory(bot, botEvents) {
     let lastThankPlayer = '';
     let foodCountBefore = 0;
 
-    // Track food count before collecting
+    // Track food count (every 2s for ping optimization)
     setInterval(() => {
         if (bot.inventory) {
             foodCountBefore = bot.inventory.items().filter(i => FOOD_ITEMS.includes(i.name)).length;
         }
-    }, 1000);
+    }, 2000);
 
     bot.on('playerCollect', (collector, collected) => {
         if (collector !== bot.entity) return;
