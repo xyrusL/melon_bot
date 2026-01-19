@@ -68,24 +68,37 @@ function setupInventory(bot, botEvents) {
 
         console.log(`[Survival] ❤️ Health: ${health.toFixed(0)} | 🍖 Food: ${food}`);
 
-        // CRITICAL: Almost dead → spawn immediately
+        // Check if we have food in inventory
+        const hasFood = checkHasFood();
+
+        // CRITICAL: Almost dead
         if (health <= CRITICAL_HEALTH) {
-            emergencySpawn();
+            const danger = checkNearbyDanger();
+
+            if (hasFood && !danger) {
+                // Has food and safe → EAT FIRST!
+                console.log(`[Survival] 🍖 Critical HP but have food - eating first!`);
+                tryEatFood();
+            } else if (hasFood && danger) {
+                // Has food but danger → spawn then eat
+                console.log(`[Survival] ⚠️ Critical HP + danger - spawning first!`);
+                emergencySpawn();
+            } else {
+                // No food → spawn and ask for food
+                console.log(`[Survival] ❌ Critical HP + no food - spawning!`);
+                emergencySpawn();
+            }
             return;
         }
 
-        // LOW: Need to eat or escape
+        // LOW: Need to eat
         if (health < EMERGENCY_HEALTH) {
-            const danger = checkNearbyDanger();
-
-            if (danger) {
-                // Danger nearby + low HP → escape first
-                console.log(`[Survival] ⚠️ Danger nearby! Escaping before eating...`);
-                interruptEating();
-                emergencySpawn();
-            } else {
-                // Safe → try to eat
+            if (hasFood) {
+                console.log(`[Survival] 🍖 Low HP - trying to eat...`);
                 tryEatFood();
+            } else {
+                console.log(`[Survival] ❌ Low HP + no food!`);
+                // Will ask for food at spawn
             }
             return;
         }
@@ -200,6 +213,16 @@ function setupInventory(bot, botEvents) {
         interruptEating();
 
         bot.chat('/spawn');
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //                    FOOD CHECK HELPER
+    // ═══════════════════════════════════════════════════════════════
+
+    function checkHasFood() {
+        if (!bot.inventory) return false;
+        const items = bot.inventory.items();
+        return items.some(item => FOOD_ITEMS.includes(item.name));
     }
 
     // ═══════════════════════════════════════════════════════════════
